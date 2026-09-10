@@ -3,153 +3,290 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pune Municipal Heat Action Command Center</title>
+    <title>SurakshaHeat Pune — Heatwave Warning & Vulnerability Dashboard</title>
     
-    <!-- Leaflet.js Map Library -->
-    <link rel="stylesheet" href="https://unpkg.com" />
+    <!-- Leaflet JS Map Engine Dependencies -->
+    <link rel="stylesheet" href="https://unpkg.com" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     
     <style>
         :root {
-            --dark-navy: #0f172a;
-            --slate-blue: #1e293b;
-            --alert-red: #e11d48;
-            --accent-orange: #f97316;
-            --safe-green: #10b981;
-            --panel-bg: #ffffff;
-            --body-bg: #f1f5f9;
-            --text-dark: #334155;
+            --danger-core: #bd0026;
+            --danger-bg: #f8d7da;
+            --warning-core: #f57c00;
+            --success-core: #2e7d32;
+            --neutral-dark: #1e1e24;
+            --sidebar-bg: #ffffff;
+            --canvas-bg: #f4f5f7;
+            --border-ui: #e1e4e8;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-        body { display: flex; height: 100vh; background-color: var(--body-bg); color: var(--text-dark); overflow: hidden; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            color: #2b2d42;
+            background-color: var(--canvas-bg);
+        }
 
-        /* Left Hand Vertical Command Navigation Pane */
-        .control-sidebar { width: 280px; background-color: var(--dark-navy); color: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: 20px 0; }
-        .sidebar-brand { padding: 0 20px 20px 20px; border-bottom: 1px solid #334155; }
-        .sidebar-brand h2 { font-size: 1.15rem; color: #f8fafc; font-weight: 700; letter-spacing: 0.5px; }
-        .sidebar-brand p { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
-        
-        .navigation-menu { display: flex; flex-direction: column; gap: 4px; padding: 20px 10px; flex: 1; }
-        .menu-item { display: flex; align-items: center; gap: 12px; padding: 12px 15px; background: none; border: none; color: #cbd5e1; font-size: 0.9rem; font-weight: 600; text-align: left; cursor: pointer; border-radius: 6px; transition: all 0.2s; }
-        .menu-item:hover { background-color: #1e293b; color: #fff; }
-        .menu-item.active { background-color: var(--alert-red); color: #fff; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3); }
+        header {
+            background-color: var(--neutral-dark);
+            color: #ffffff;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+        }
 
-        .sidebar-status { padding: 15px 20px; background-color: #1e293b; margin: 0 15px; border-radius: 6px; font-size: 0.78rem; border-left: 4px solid var(--accent-orange); }
+        header h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+        }
 
-        /* Right Hand Dynamic Content Window */
-        .main-workspace { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .top-navbar { height: 65px; background-color: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
-        .live-status-pill { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 700; color: var(--alert-red); background-color: #fff1f2; padding: 6px 14px; border-radius: 20px; border: 1px solid #ffe4e6; }
-        .pulse-dot { width: 8px; height: 8px; background-color: var(--alert-red); border-radius: 50%; animation: blink 1.5s infinite; }
+        header p {
+            margin: 4px 0 0 0;
+            font-size: 0.85rem;
+            color: #a0aec0;
+        }
 
-        .app-screen { display: none; width: 100%; height: calc(100% - 65px); overflow: hidden; }
-        .app-screen.active { display: flex; }
+        /* Top Bar Screen Switching Router Tabs */
+        .tab-router {
+            display: flex;
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-ui);
+            padding: 0 15px;
+            z-index: 1000;
+        }
 
-        /* Page Layout Styles */
-        .scrollable-content { flex: 1; padding: 30px; overflow-y: auto; width: 100%; max-width: 1200px; margin: 0 auto; }
-        .split-pane { display: flex; width: 100%; height: 100%; }
-        .interactive-sidebar { width: 340px; background-color: #fff; border-right: 1px solid #e2e8f0; padding: 25px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
-        .map-frame { flex: 1; height: 100%; position: relative; background-color: #cbd5e1; }
+        .router-btn {
+            background: none;
+            border: none;
+            padding: 14px 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4a5568;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease-in-out;
+        }
 
-        /* Card Elements */
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .data-card { background-color: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.01); }
-        .card-label { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-        .card-main-val { font-size: 1.8rem; font-weight: 700; color: #0f172a; margin-top: 5px; }
-        .card-footer-lbl { font-size: 0.8rem; margin-top: 5px; color: #64748b; }
+        .router-btn:hover {
+            color: var(--danger-core);
+            background-color: rgba(189, 0, 38, 0.04);
+        }
 
-        /* Form Elements */
-        .control-group { display: flex; flex-direction: column; gap: 6px; }
-        .control-group label { font-size: 0.8rem; font-weight: 600; color: #475569; }
-        .control-group select, .control-group input[type="range"] { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; width: 100%; }
+        .router-btn.active {
+            color: var(--danger-core);
+            border-bottom-color: var(--danger-core);
+        }
 
-        /* Action Buttons */
-        .action-btn { background-color: var(--dark-navy); color: white; border: none; padding: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; width: 100%; text-align: center; }
-        .action-btn:hover { background-color: #1e293b; }
-        .btn-trigger { background-color: var(--alert-red); }
-        .btn-trigger:hover { background-color: var(--primary-dark); }
+        /* Screen Window Management Layouts */
+        .screen-view {
+            display: none;
+            flex: 1;
+            overflow: hidden;
+        }
 
-        /* Structural Tabular Framework for Dataset */
-        .table-container { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 15px; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left; }
-        th, td { padding: 12px 18px; border-bottom: 1px solid #e2e8f0; }
-        th { background-color: #f8fafc; font-weight: 600; color: #475569; }
-        tr:last-child td { border-bottom: none; }
+        .screen-view.active {
+            display: flex;
+        }
 
-        /* Badges */
-        .alert-badge { display: inline-block; padding: 3px 8px; font-weight: 700; border-radius: 4px; font-size: 0.72rem; color: #fff; }
-        .badge-danger { background-color: var(--alert-red); }
-        .badge-warning { background-color: var(--accent-orange); }
-        .badge-success { background-color: var(--safe-green); }
+        .split-workspace {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
 
-        @keyframes blink { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+        .control-sidebar {
+            width: 360px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-ui);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.02);
+        }
+
+        .interactive-map {
+            flex: 1;
+            height: 100%;
+            background-color: #e5e9f0;
+        }
+
+        /* Standalone Content Table Container */
+        .fluid-container {
+            width: 100%;
+            padding: 30px;
+            overflow-y: auto;
+            background-color: #ffffff;
+        }
+
+        /* UI Component Cards */
+        .ui-card {
+            background: #ffffff;
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .ui-card h4 {
+            margin: 0 0 12px 0;
+            font-size: 0.95rem;
+            color: #2d3748;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-ui);
+            padding-bottom: 6px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-critical { background-color: #fff5f5; color: var(--danger-core); border: 1px solid #feb2b2; }
+        .badge-warning { background-color: #fffaf0; color: var(--warning-core); border: 1px solid #fbd38d; }
+        .badge-success { background-color: #f0fff4; color: var(--success-core); border: 1px solid #9ae6b4; }
+
+        /* Dynamic Parameter Simulation Sliders */
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .slider-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4a5568;
+            display: flex;
+            justify-content: space-between;
+        }
+        .slider-input {
+            width: 100%;
+            accent-color: var(--danger-core);
+        }
+
+        .btn-action {
+            background-color: var(--danger-core);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .btn-action:hover { background-color: var(--primary-dark); }
+        .btn-action:active { transform: scale(0.98); }
+
+        #alert-console-box {
+            background-color: #fffaf0;
+            border-left: 4px solid var(--warning-core);
+            padding: 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: #7b341e;
+        }
+
+        /* Relational Matrix Table Architectures */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-ui);
+            font-size: 0.9rem;
+        }
+        th {
+            background-color: #f7fafc;
+            color: #4a5568;
+            font-weight: 600;
+        }
+        tr:hover { background-color: #f8fafc; }
+
+        /* NDMA Plan Grid styling */
+        .ndma-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .ndma-card {
+            border-top: 4px solid var(--danger-core);
+            background: #fdfdfd;
+        }
+        .ndma-card ul {
+            padding-left: 20px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #4a5568;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Left Hand Command Sidebar Navigation -->
-    <div class="control-sidebar">
-        <div class="sidebar-brand">
-            <h2>PMC HEAT COMMAND</h2>
-            <p>Pune Ward Vulnerability Analytics Platform</p>
+    <header>
+        <div>
+            <h1>☀️ SurakshaHeat Pune: Climate × Vulnerability Intelligence</h1>
+            <p>Predictive Ward-Level Alerts & Shaded Emergency Cooling Shelter Router</p>
         </div>
-        
-        <!-- Clean, verified navigation menu targeting exact IDs -->
-        <nav class="navigation-menu">
-            <button class="menu-item active" onclick="switchScreen('view-dashboard')">📊 Command Dashboard</button>
-            <button class="menu-item" onclick="switchScreen('view-map')">🗺️ Interactive Risk Map</button>
-            <button class="menu-item" onclick="switchScreen('view-simulator')">🎛️ Bio-Climate Simulator</button>
-            <button class="menu-item" onclick="switchScreen('view-dataset')">💾 Master CSV Framework</button>
-        </nav>
-
-        <div class="sidebar-status">
-            <strong>NDMA Trigger Matrix:</strong>
-            <p style="margin-top: 3px; opacity: 0.85;">Operational Phase 3 activated city-wide across PMC bounds.</p>
+        <div>
+            <span class="badge badge-critical" style="font-size: 0.85rem; padding: 6px 14px;">IMD ALERT: SEVERE HEATWAVE</span>
         </div>
-    </div>
+    </header>
 
-    <!-- Main Dynamic Application Screen Space -->
-    <div class="main-workspace">
-        <div class="top-navbar">
-            <h3 id="navbar-title" style="font-weight: 700; color: #1e293b;">Command Overview Console</h3>
-            <div class="live-status-pill">
-                <div class="pulse-dot"></div>
-                <span>LIVE IMD FORECAST STREAM ACTIVE</span>
-            </div>
-        </div>
+    <!-- Top Client Router Bars -->
+    <nav class="tab-router">
+        <button class="router-btn active" onclick="routeTo('screen-dashboard')">📊 Live Risk Simulator</button>
+        <button class="router-btn" onclick="routeTo('screen-vulnerability')">🛰️ Satellite & Tree Canopy Map</button>
+        <button class="router-btn" onclick="routeTo('screen-matrix')">📋 Master Vulnerability Matrix (CSV)</button>
+        <button class="router-btn" onclick="routeTo('screen-ndma')">🛡️ NDMA Action Protocol Center</button>
+    </nav>
 
-        <!-- SCREEN 1: COMMAND DASHBOARD OVERVIEW -->
-        <div id="view-dashboard" class="app-screen active">
-            <div class="scrollable-content">
-                <div class="stat-grid">
-                    <div class="data-card">
-                        <div class="card-label">IMD Station Ambient Temp</div>
-                        <div class="card-main-val">45.2°C</div>
-                        <div class="card-footer-lbl" style="color: var(--alert-red); font-weight: 600;">⚠️ Severe Heatwave Alert</div>
-                    </div>
-                    <div class="data-card">
-                        <div class="card-label">Relative Air Humidity</div>
-                        <div class="card-main-val">18%</div>
-                        <div class="card-footer-lbl">Impaired skin sweat dissipation</div>
-                    </div>
-                    <div class="data-card">
-                        <div class="card-label">Fine Particulate AQI</div>
-                        <div class="card-main-val">164</div>
-                        <div class="card-footer-lbl" style="color: var(--accent-orange); font-weight: 600;">Unhealthy Atmospheric Load</div>
-                    </div>
-                    <div class="data-card" style="border-top: 4px solid var(--alert-red);">
-                        <div class="card-label">Max Risk Factor Calculated</div>
-                        <div class="card-main-val" style="color: var(--alert-red);">9.4 / 10</div>
-                        <div class="card-footer-lbl"><span class="alert-badge badge-danger">Yerawada Sector</span></div>
-                    </div>
+    <!-- SCREEN 1: DYNAMIC RISK SIMULATOR & ROUTING -->
+    <div id="screen-dashboard" class="screen-view active">
+        <div class="split-workspace">
+            <div class="control-sidebar">
+                <h3>⚠️ Vulnerability Risk Engine</h3>
+                <p style="font-size: 0.8rem; margin:0; color:#718096;">Adjust environmental inputs to dynamically compute localized biometric heat strain hazards across PMC wards.</p>
+                
+                <!-- Quick Preset Scenarios Evaluators -->
+                <div class="ui-card" style="background:#f7fafc;">
+                    <h4 style="border:none; margin-bottom:8px; padding:0;">⚡ One-Click Presets</h4>
+                    <button class="btn-action" style="background:#4a5568; margin-bottom:8px; padding:6px;" onclick="loadPreset(45.2, 85, 12)">🔥 2024 Record Heatwave</button>
+                    <button class="btn-action" style="background:#718096; padding:6px;" onclick="loadPreset(38.0, 45, 30)">☀️ Normal Summer Baseline</button>
                 </div>
 
-                <div class="data-card" style="margin-bottom: 25px;">
-                    <h3 style="margin-bottom: 12px;">🚨 Active NDMA Emergency Directives</h3>
-                    <p style="font-size: 0.88rem; line-height: 1.5; color: #475569;">
-                        Based on joint satellite Land Surface Temperature (LST) arrays and local density indicators, the following tactical protocols are triggered instantly:
-                    </p>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; font-size: 0.85rem;">
-                        <div style="padding: 12px; background: #fff1f2; border-left: 4px solid var(--alert-red); border-radius: 4px;">
-                            <strong>Labor Authority Mandate:</strong>
-                            <p style="margin-top:4px; color: #475569;">Suspend all open-air unshaded construction and delivery infrastructure processing between 11:00 AM and 4:00 PM.</p>
+                <!-- Live Variable Simulation Knobs -->
+                <div class="ui-card">
+                    <h4>⚙️ Model Tuning Sliders</h4>
+                    <div class="slider-group">
+                        <label>IMD Forecast Temp: <span id="val-temp">42.0</span>°C</label>
+                        <input type="range" class="slider-input" id="slide-temp" min="35" max="48" step="0.1" value="42" oninput="runLiveRiskPipeline()">
+                    </div>
+                    <div class="slider-group">
+                        <label>Slum/Informal Density: <span id="val-slum">60</span>%</label>
+                        <input type="range" class="slider-input" id="slide-slum" min="5" max="95" value="60" oninput="runLiveRiskPipeline()">
+                    </div>
+                    <div class="slider-group">
+                        <label>Tree Canopy Coverage: <span id="val-canopy">15</span>%</label>
+                        <input type="range" class="slider-input" id="slide-canopy" min="2" max="80" value="15" oninput="runLiveRiskPipeline()">
+
