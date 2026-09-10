@@ -1,108 +1,199 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heatwave Early Warning System</title>
-    
-    <!-- Leaflet.js CSS for Interactive Maps -->
-    <link rel="stylesheet" href="https://unpkg.com" />
-    
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        header {
-            background-color: #d32f2f;
-            color: white;
-            padding: 15px;
-            text-align: center;
-        }
-        #container {
-            display: flex;
-            flex: 1;
-        }
-        #sidebar {
-            width: 300px;
-            background-color: #f5f5f5;
-            padding: 20px;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-        }
-        #map {
-            flex: 1;
-            height: 100%;
-        }
-        .btn {
-            background-color: #d32f2f;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-        }
-    </style>
-</head>
-<body>
+import pandas as pd
+import geopandas as gpd
+import numpy as np
 
-    <header>
-        <h1>☀️ India Heatwave Early Warning & Vulnerability Mapper</h1>
-        <p>Ward-Level Alerts & Cooling Shelter Routing System</p>
-    </header>
-
-    <div id="container">
-        <div id="sidebar">
-            <h3>⚠️ Risk Control Panel</h3>
-            <p><strong>IMD Forecast Data:</strong> Loaded</p>
-            <p><strong>Active Alert:</strong> Level-3 Extreme Heat Wave</p>
-            <button class="btn" onclick="showHeatmap()">Simulate Ward Vulnerability</button>
-            <button class="btn" style="background-color: #388e3c;" onclick="findShelter()">Route to Nearest Cooling Shelter</button>
-            
-            <div id="status-box" style="margin-top: 20px; font-size: 0.9em; color: #555;">
-                Click a button to interact with the system demo.
-            </div>
-        </div>
+def load_and_clean_wards(geojson_path):
+    """
+    Step 1: Ingests the 2022 Pune Electoral Ward maps.
+    Cleans geometries and calculates baseline structural area.
+    """
+    print("Loading PMC Ward Boundaries...")
+    wards = gpd.read_file(geojson_path)
+    
+    # Standardize columns to the mandatory dataset features
+    keep_cols = ['ward_id', 'ward_name', 'geometry']
+    wards = wards[keep_cols]
+    
+    # Calculate geometric area in square kilometers safely using metric projections
+    if wards.crs.is_geographic:
+        # Project to local UTM Zone (43N for Maharashtra/Pune) to calculate accurate area
+        wards_projected = wards.to_crs(epsg=32643)
+        wards['area_sq_km'] = wards_projected.geometry.area / 1e6
+    else:
+        wards['area_sq_km'] = wards.geometry.area / 1e6
         
-        <!-- The visual map element -->
-        <div id="map"></div>
-    </div>
+    return wards
 
-    <!-- Leaflet JS Script -->
-    <script src="https://unpkg.com"></script>
-    <script>
-        // Initialize the map centered around India (coordinates point near Nagpur for central view)
-        const map = L.map('map').setView([21.1458, 79.0882], 5);
+def merge_demographics(wards_df, census_csv_path):
+    """
+    Step 2: Merges Census 2011 indicators.
+    Captures raw population segments and high-risk age classes.
+    """
+    print("Merging Census demographic variables...")
+    census = pd.read_csv(census_csv_path)
+    
+    # Expected inputs: ward_id, total_pop, child_pop_0_6, elderly_pop_60_plus
+    # Perform a left join to preserve geospatial integrity
+    merged = wards_df.merge(census, on="ward_id", how="left")
+    
+    # Calculate derived structural variables
+    merged['population_density'] = merged['total_pop'] / merged['area_sq_km']
+    merged['children_pct'] = (merged['child_pop_0_6'] / merged['total_pop']) * 100
+    merged['elderly_pct'] = (merged['elderly_pop_60_plus'] / merged['total_pop']) * 100
+    
+    return merged
 
-        // Load OpenStreetMap tiles
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+def merge_slum_data(wards_df, slums_csv_path):
+    """
+    Step 3: Appends PMC informal settlement metrics.
+    Integrates density characteristics and housing distributions.
+    """
+    print("Integrating informal settlement density arrays...")
+    slums = pd.read_csv(slums_csv_path)
+    
+    # Expected columns: ward_id, slum_population, slum_area_ha, notified_slums
+    merged = wards_df.merge(slums, on="ward_id", how="left")
+    
+    # Handle missing elements safely by filling zeros for non-slum areas
+    fill_cols = ['slum_population', 'slum_area_ha', 'notified_slums']
+    merged[fill_cols] = merged[fill_cols].fillna(0)
+    
+    # Compute relative structural concentration metrics
+    merged['slum_pct'] = (merged['slum_population'] / merged['total_pop']) * 100
+    # Convert ward area from sq km to hectares for comparative density matching (1 sq km = 100 Ha)
+    ward_area_ha = merged['area_sq_km'] * 100
+    merged['slum_density'] = merged['slum_population'] / merged['slum_area_ha'].replace(0, np.nan)
+    merged['slum_density'] = merged['slum_density'].fillna(0)
+    
+    return merged
 
-        function showHeatmap() {
-            document.getElementById('status-box').innerHTML = "🟢 <strong>Simulating Ward Heatmap:</strong> Red circles indicate dense urban slums/informal settlements combined with high IMD temperatures.";
-            
-            // Add a mock vulnerability hotspot circle (Example: High risk zone)
-            const highRiskZone = L.circle([21.1458, 79.0882], {
-                color: 'red',
-                fillColor: '#f03',
-                fillOpacity: 0.5,
-                radius: 150000 // scale for visual representation
-            }).addTo(map).bindPopup("<b>High Risk Ward 12</b><br>Informal Settlement Density: High<br>Outdoor Workers: 64%<br>Estimated Temp: 46.5°C").openPopup();
-        }
+def aggregate_tree_census(wards_df, raw_trees_csv_path):
+    """
+    Step 4: Compiles the 4.09M raw Pune Tree Census records.
+    Aggregates large micro-data coordinates into localized density metrics.
+    """
+    print("Aggregating large scale tree census distributions...")
+    # Loading individual trees can hit memory bottlenecks; chunking or optimizing is recommended
+    trees = pd.read_csv(raw_trees_csv_path, usecols=['ward_id', 'canopy_dia_m', 'condition'])
+    
+    # Compute structural groupby summary configurations
+    tree_summary = trees.groupby('ward_id').agg(
+        tree_count=('ward_id', 'count'),
+        avg_canopy=('canopy_dia_m', 'mean'),
+        healthy_count=('condition', lambda x: (x == 'Healthy').sum())
+    ).reset_index()
+    
+    # Merge structural aggregates back to main master tracking pipeline
+    merged = wards_df.merge(tree_summary, on="ward_id", how="left")
+    merged['tree_count'] = merged['tree_count'].fillna(0)
+    merged['tree_density'] = merged['tree_count'] / merged['area_sq_km']
+    
+    merged['healthy_tree_percentage'] = (merged['healthy_count'] / merged['tree_count'].replace(0, np.nan)) * 100
+    merged['healthy_tree_percentage'] = merged['healthy_tree_percentage'].fillna(0)
+    merged.drop(columns=['healthy_count'], inplace=True)
+    
+    return merged
 
-        function findShelter() {
-            document.getElementById('status-box').innerHTML = "🔵 <strong>Routing Active:</strong> Generating fastest walking path for outdoor workers avoiding unshaded roads to the nearest NDMA cooling center.";
-            
-            // Add a mock cooling shelter pin
-            const shelterMarker = L.marker([21.5000, 79.2000]).addTo(map)
-                .bindPopup("<b>NDMA Cooling Shelter #4</b><br>Capacity: 120 people<br>Amenities: Clean water, ORS, AC").openPopup();
-        }
-    </script>
-</body>
-</html>
+def simulate_satellite_zonal_stats(wards_df):
+    """
+    Step 5: Placeholder for Google Earth Engine / GIS spatial intersections.
+    Maps satellite vegetation dynamics and thermal profiles.
+    """
+    print("Attaching satellite-derived zonal thermal arrays...")
+    # In practice, use rasterstats.zonal_stats with Landsat surface bands
+    wards_df['mean_ndvi'] = np.random.uniform(0.05, 0.35, len(wards_df))
+    wards_df['mean_lst'] = np.random.uniform(38.5, 49.0, len(wards_df))
+    wards_df['max_lst'] = wards_df['mean_lst'] + np.random.uniform(1.0, 3.5, len(wards_df))
+    return wards_df
+
+def generate_weather_series(days=7):
+    """
+    Generates dynamic atmospheric observation datasets (NASA POWER / IMD structures).
+    """
+    print("Building historical and operational weather models...")
+    dates = pd.date_range(end=pd.Timestamp.now(), periods=days)
+    
+    weather_data = []
+    for dt in dates:
+        temp = np.random.uniform(39.0, 46.5)
+        rh = np.random.uniform(40, 65)
+        # Simplified linear approximation of Heat Index computation values
+        heat_idx = temp + (0.5555 * (((6.11 * np.exp(5417.7530 * ((1/273.16) - (1/(273.15 + temp))))) * (rh/100)) - 10))
+        
+        weather_data.append({
+            "date": dt.strftime('%Y-%m-%d'),
+            "temperature": round(temp, 2),
+            "humidity": round(rh, 2),
+            "heat_index": round(heat_idx, 2),
+            "wind_speed": round(np.random.uniform(8.0, 22.0), 2),
+            "rainfall": round(max(0, np.random.normal(0, 5)), 2)
+        })
+        
+    return pd.DataFrame(weather_data)
+
+def pipeline_orchestrator():
+    """
+    Main sequence loop orchestrating data loads and parsing structures into target components.
+    """
+    # ----------------------------------------------------
+    # Core Data Loading and Vector Intersections (Mocking Inputs)
+    # ----------------------------------------------------
+    # actual files must match these structural positions in execution
+    # wards = load_and_clean_wards("data/pune_electoral_wards_2022.geojson")
+    
+    # Create functional synthetic vector container to demonstrate alignment
+    print("Initializing prototype schema targets...")
+    df = pd.DataFrame({
+        "ward_id": [1, 2, 3, 4, 5],
+        "ward_name": ["Yerawada", "Koregaon Park", "Shivajinagar", "Hadapsar", "Kothrud"],
+        "area_sq_km": [12.4, 8.2, 6.5, 15.1, 10.3],
+        "total_pop": [120000, 65000, 95000, 140000, 78000],
+        "child_pop_0_6": [14000, 5100, 8900, 15200, 4200],
+        "elderly_pop_60_plus": [11000, 12000, 13500, 11200, 14500],
+        "slum_population": [45200, 12100, 38900, 51200, 6200],
+        "slum_area_ha": [120.5, 34.2, 92.0, 145.1, 12.0],
+        "notified_slums": [14, 4, 11, 16, 2],
+        "tree_count": [18320, 11240, 25120, 19430, 31200],
+        "canopy_dia_m": [4.2, 6.8, 5.1, 3.9, 7.2]
+    })
+    
+    # Execute structural feature engine processing steps
+    df['population_density'] = df['total_pop'] / df['area_sq_km']
+    df['children_pct'] = (df['child_pop_0_6'] / df['total_pop']) * 100
+    df['elderly_pct'] = (df['elderly_pop_60_plus'] / df['total_pop']) * 100
+    df['slum_pct'] = (df['slum_population'] / df['total_pop']) * 100
+    df['slum_density'] = df['slum_population'] / df['slum_area_ha']
+    df['tree_density'] = df['tree_count'] / df['area_sq_km']
+    
+    # Append satellite information parameters
+    df = simulate_satellite_zonal_stats(df)
+    
+    # Add dummy geospatial metadata placeholders for mapping nodes
+    df['hospital_count'] = [3, 5, 6, 2, 4]
+    df['shelter_count'] = [2, 1, 2, 3, 1]
+
+    # ----------------------------------------------------
+    # Partitioning Output Assets (Per Design Architecture Recommendation)
+    # ----------------------------------------------------
+    # Asset A: Static structural ward configuration file
+    static_cols = [
+        'ward_id', 'ward_name', 'area_sq_km', 'total_pop', 'population_density',
+        'children_pct', 'elderly_pct', 'slum_population', 'slum_pct', 'slum_density',
+        'tree_density', 'mean_ndvi', 'mean_lst', 'max_lst', 'hospital_count', 'shelter_count'
+    ]
+    pune_ward_static = df[static_cols]
+    
+    # Asset B: Dynamic weather observation series file
+    pune_weather_daily = generate_weather_series(days=14)
+    
+    # Save directly to output components for operational prototype steps
+    pune_ward_static.to_csv("data/pune_ward_static.csv", index=False)
+    pune_weather_daily.to_csv("data/pune_weather_daily.csv", index=False)
+    print("Pipeline compilation successful. Data assets saved directly to target folders.")
+
+if __name__ == "__main__":
+    import os
+    os.makedirs("data", exist_ok=True)
+    pipeline_orchestrator()
+
+    
